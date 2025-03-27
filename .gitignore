@@ -1,6 +1,7 @@
-/bin/
-/obj/
-/publish/
+/azure-payretailers/bin/
+/azure-payretailers/obj/
+/azure-payretailers/publish/
+/azure-payretailers/app.zip
 /.vscode/
 *.user
 *.suo

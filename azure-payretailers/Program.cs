@@ -11,7 +11,7 @@ var builder = WebApplication.CreateBuilder(args);
 // OpenTelemetry configuration
 builder.Services.AddOpenTelemetry()
     .ConfigureResource(resource => resource
-        .AddService(serviceName: "OPENTEL")) // Equivalente a OTEL_RESOURCE_ATTRIBUTES=service.name=OPENTEL
+        .AddService(serviceName: "APP SERVICE NET")) // Equivalente a OTEL_RESOURCE_ATTRIBUTES=service.name=OPENTEL
     .WithTracing(tracerProviderBuilder => tracerProviderBuilder
         .AddAspNetCoreInstrumentation()
         .AddHttpClientInstrumentation()
