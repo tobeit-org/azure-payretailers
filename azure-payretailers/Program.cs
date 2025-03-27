@@ -32,7 +32,7 @@ builder.Services.AddOpenTelemetry()
 var app = builder.Build();
 
 // Hello World endpoint
-app.MapGet("/", () => "Hello, world!");
+app.MapGet("/", () => Results.Ok("La aplicación está funcionando correctamente"));
 
 // Run the app
 app.Run();
