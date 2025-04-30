@@ -1,6 +1,8 @@
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using System.Diagnostics.Metrics;
+using OpenTelemetry;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
@@ -10,6 +12,7 @@ using Serilog.Sinks.Network;
 using Serilog.Formatting.Json;
 using OpenTelemetry.Logs;
 using System;
+using System.Diagnostics;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -36,12 +39,26 @@ builder.Services.AddLogging(logging =>
     });
 });
 
+
+//custom Tracing Spans
+const string CustomTelemetrySource = "CustomTelemetrySource";
+ActivitySource CustomTracer = new ActivitySource(CustomTelemetrySource);
+
 // OpenTelemetry configuration (tracing, metrics, and logs)
 builder.Services.AddOpenTelemetry()
     .ConfigureResource(resource => resource
-        .AddService(serviceName: "APP SERVICE NET"))
+        .AddService(serviceName: "APP SERVICE NET",
+        serviceNamespace: "dev",
+        serviceVersion: "1.0.0",
+        serviceInstanceId: "local-TOBEIT-LAPTOP")
+        .AddAttributes(new Dictionary<string, object>
+        {
+            { "deployment.environment", "stg" } // Usar deployment.environment como en la documentación de Elastic
+        }))
     .WithTracing(tracerProviderBuilder => tracerProviderBuilder
-        .AddAspNetCoreInstrumentation()
+        .SetSampler(new AlwaysOnSampler())
+        .AddSource(CustomTelemetrySource) //add custom Traces as a source
+        .AddAspNetCoreInstrumentation()        
         .AddHttpClientInstrumentation()
         .AddOtlpExporter(options =>
         {
@@ -51,6 +68,8 @@ builder.Services.AddOpenTelemetry()
     .WithMetrics(metricsBuilder => metricsBuilder
         .AddAspNetCoreInstrumentation()
         .AddHttpClientInstrumentation()
+        .AddRuntimeInstrumentation()
+        .AddPrometheusExporter()
         .AddOtlpExporter(options =>
         {
             options.Endpoint = new Uri("https://payretailers-otel-collector.interno.tobeit.net/v1/metrics");
@@ -67,7 +86,7 @@ var app = builder.Build();
 
 // Enable request logging middleware to capture HTTP requests and responses
 // app.UseSerilogRequestLogging();  // Uncomment to log HTTP requests
-
+app.MapPrometheusScrapingEndpoint("/metrics");
 // Configure the error handling endpoint
 app.MapGet("/error", () =>
 {   
@@ -80,12 +99,37 @@ app.MapGet("/", () => Results.Ok("La aplicación está funcionando correctamente
 // Define a new endpoint "/transaction_data" to generate and log payment data
 app.MapGet("/transaction_data", () =>
 {
+    var activity = Activity.Current;
+    activity?.AddEvent(new("Starting Main Span"));
+    // var tracer = OpenTelemetry.Sdk.CreateTracerProviderBuilder()
+    //     .Build()
+    //     .GetTracer("MyAppTracer");
+    using var activity2 = CustomTracer.StartActivity("GeneratePaymentLog",ActivityKind.Internal);
+    string PayRetailersID = Guid.NewGuid().ToString();
+
+
+    activity2?.SetTag("PayRetailersID", PayRetailersID);
+
+    // var span1 = tracer.StartSpan("GeneratePaymentLog");
+    // span1.AddEvent("Started generating payment log");
+    
+    // activity2.SetParentId(activity?.Context.TraceId.ToString());
+    
     // Generate simulated payment log
+    activity2?.AddEvent(new ActivityEvent("Starting Getting logs"));
     var paymentLog = GenerateSimulatedPaymentLog();
+    // span1.AddEvent("Payment log generated successfully");
+    activity2?.AddEvent(new ActivityEvent("Logs de test generados"));
+    activity2?.Stop();
 
+    using var activity3 = CustomTracer.StartActivity("SendLogsToElastic",ActivityKind.Internal);
+    activity3?.AddEvent(new("Logging To Elastic"));
     // Log the generated payment log using Serilog
-    Log.Information(paymentLog);
+    Log.Information(paymentLog);  
+    activity3?.AddEvent(new(paymentLog));
+    activity2?.Stop();
 
+    
     // Return the generated payment log as JSON response
     return Results.Json(paymentLog);
 });
